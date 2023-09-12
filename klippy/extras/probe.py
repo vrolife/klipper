@@ -308,6 +308,7 @@ class ProbeEndstopWrapper:
         pin = config.get('pin')
         pin_params = ppins.lookup_pin(pin, can_invert=True, can_pullup=True)
         mcu = pin_params['chip']
+        pin_params['irq_mode'] = config.get('irq_mode', default=0)
         self.mcu_endstop = mcu.setup_pin('endstop', pin_params)
         self.printer.register_event_handler('klippy:mcu_identify',
                                             self._handle_mcu_identify)

@@ -223,6 +223,7 @@ class MCU_endstop:
     def __init__(self, mcu, pin_params):
         self._mcu = mcu
         self._pin = pin_params['pin']
+        self._irq_mode = pin_params.get('irq_mode', 0)
         self._pullup = pin_params['pullup']
         self._invert = pin_params['invert']
         self._oid = self._mcu.create_oid()
@@ -255,8 +256,8 @@ class MCU_endstop:
         return [s for trsync in self._trsyncs for s in trsync.get_steppers()]
     def _build_config(self):
         # Setup config
-        self._mcu.add_config_cmd("config_endstop oid=%d pin=%s pull_up=%d"
-                                 % (self._oid, self._pin, self._pullup))
+        self._mcu.add_config_cmd("config_endstop oid=%d pin=%s pull_up=%d irq_mode=%u"
+                                 % (self._oid, self._pin, self._pullup, self._irq_mode))
         self._mcu.add_config_cmd(
             "endstop_home oid=%d clock=0 sample_ticks=0 sample_count=0"
             " rest_ticks=0 pin_value=0 trsync_oid=0 trigger_reason=0"

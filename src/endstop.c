@@ -3,7 +3,7 @@
 // Copyright (C) 2016-2021  Kevin O'Connor <kevin@koconnor.net>
 //
 // This file may be distributed under the terms of the GNU GPLv3 license.
-
+#include "autoconf.h"
 #include "basecmd.h" // oid_alloc
 #include "board/gpio.h" // struct gpio
 #include "board/irq.h" // irq_disable
@@ -11,12 +11,18 @@
 #include "sched.h" // struct timer
 #include "trsync.h" // trsync_do_trigger
 
+#if CONFIG_STM32_EXTERNAL_INTERRUPT
+#include "stm32/extirq.h"
+#endif
+
 struct endstop {
     struct timer time;
     struct gpio_in pin;
     uint32_t rest_time, sample_time, nextwake;
     struct trsync *ts;
     uint8_t flags, sample_count, trigger_count, trigger_reason;
+    uint32_t irq_pin;
+    uint32_t irq_mode;
 };
 
 enum { ESF_PIN_HIGH=1<<0, ESF_HOMING=1<<1 };
@@ -63,13 +69,31 @@ endstop_oversample_event(struct timer *t)
     return SF_RESCHEDULE;
 }
 
+#if CONFIG_STM32_EXTERNAL_INTERRUPT
+static void endstop_interrupt_callabck(void* data)
+{
+    struct endstop *e = (struct endstop *)data;
+    config_external_interrupt(e->irq_pin, ExternalInterruptTriggerModeDisabled, 0, 0);
+    trsync_do_trigger(e->ts, e->trigger_reason);
+}
+#endif
+
 void
 command_config_endstop(uint32_t *args)
 {
     struct endstop *e = oid_alloc(args[0], command_config_endstop, sizeof(*e));
     e->pin = gpio_in_setup(args[1], args[2]);
+    e->irq_pin = args[1];
+    e->irq_mode = args[3];
 }
-DECL_COMMAND(command_config_endstop, "config_endstop oid=%c pin=%c pull_up=%c");
+DECL_COMMAND(command_config_endstop, "config_endstop oid=%c pin=%c pull_up=%c irq_mode=%u");
+
+#if CONFIG_STM32_EXTERNAL_INTERRUPT
+DECL_ENUMERATION("irq_mode", "disabled", ExternalInterruptTriggerModeDisabled);
+DECL_ENUMERATION("irq_mode", "rising", ExternalInterruptTriggerModeRising);
+DECL_ENUMERATION("irq_mode", "falling", ExternalInterruptTriggerModeFalling);
+DECL_ENUMERATION("irq_mode", "rising_falling", ExternalInterruptTriggerModeRisingFalling);
+#endif
 
 // Home an axis
 void
@@ -92,7 +116,20 @@ command_endstop_home(uint32_t *args)
     e->flags = ESF_HOMING | (args[5] ? ESF_PIN_HIGH : 0);
     e->ts = trsync_oid_lookup(args[6]);
     e->trigger_reason = args[7];
-    sched_add_timer(&e->time);
+
+#if CONFIG_STM32_EXTERNAL_INTERRUPT
+    if (e->irq_mode != ExternalInterruptTriggerModeDisabled) {
+        config_external_interrupt(e->irq_pin, e->irq_mode, endstop_interrupt_callabck, e);
+    } else
+#else
+    if (e->irq_mode != 0) {
+        try_shutdown("External interrupt disabled");
+        return;
+    }
+#endif
+    {
+        sched_add_timer(&e->time);
+    }
 }
 DECL_COMMAND(command_endstop_home,
              "endstop_home oid=%c clock=%u sample_ticks=%u sample_count=%c"

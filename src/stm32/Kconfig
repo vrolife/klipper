@@ -114,6 +114,11 @@ config MACH_STM32F103x6
     depends on LOW_LEVEL_OPTIONS && MACH_STM32F103
     bool "Only 10KiB of RAM (for rare stm32f103x6 variant)"
 
+config STM32_EXTERNAL_INTERRUPT
+    depends on LOW_LEVEL_OPTIONS
+    bool "Enable external interrupt"
+    default n
+
 config MACH_STM32F0
     bool
 config MACH_STM32F1
