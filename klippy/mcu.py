@@ -223,7 +223,7 @@ class MCU_endstop:
     def __init__(self, mcu, pin_params):
         self._mcu = mcu
         self._pin = pin_params['pin']
-        self._irq_mode = pin_params.get('irq_mode', 0)
+        self._irq_mode = pin_params.get('irq_mode', 'disabled')
         self._pullup = pin_params['pullup']
         self._invert = pin_params['invert']
         self._oid = self._mcu.create_oid()
