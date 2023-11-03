@@ -256,7 +256,7 @@ class MCU_endstop:
         return [s for trsync in self._trsyncs for s in trsync.get_steppers()]
     def _build_config(self):
         # Setup config
-        self._mcu.add_config_cmd("config_endstop oid=%d pin=%s pull_up=%d irq_mode=%u"
+        self._mcu.add_config_cmd("config_endstop oid=%d pin=%s pull_up=%d irq_mode=%s"
                                  % (self._oid, self._pin, self._pullup, self._irq_mode))
         self._mcu.add_config_cmd(
             "endstop_home oid=%d clock=0 sample_ticks=0 sample_count=0"

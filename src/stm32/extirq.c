@@ -7,70 +7,70 @@
 
 #include "extirq.h"
 
-#define LINE(n) (1 << n)
+#define BIT(n) (1 << n)
 
-static ExternalInterruptCallback irq_callbacks[16];
-static void* irq_data[16];
+#define CLEAR_IT_FLAG(pin) WRITE_REG(EXTI->PR, BIT(pin))
+#define IS_IT_ACTIVE(pin) ((EXTI->PR & BIT(pin)) != RESET)
 
-#define CHECK_IRQ(num, line) \
-    irq_disable(); \
-    if ((EXTI->PR & LINE(line)) != RESET) { \
-        if (irq_callbacks[line] != 0) { \
-            irq_callbacks[line](irq_data[line]); \
+#define CHECK_IRQ(pin) \
+    if (IS_IT_ACTIVE(pin)) { \
+        CLEAR_IT_FLAG(pin); /* clear flag */ \
+        if (irq_callbacks[pin] != 0) { \
+            irq_callbacks[pin](irq_data[pin]); \
         } \
-    } \
-    NVIC_ClearPendingIRQ(num); \
-    irq_enable();
+    }
+
+static ExternalInterruptCallback irq_callbacks[16] = { 0 };
+static void* irq_data[16] = { 0 };
 
 void EXTI0_IRQn_IRQHandler(void)
 {
-    CHECK_IRQ(EXTI0_IRQn, 0);
+    irq_disable();
+    CHECK_IRQ(0);
+    irq_enable();
 }
 DECL_ARMCM_IRQ(EXTI0_IRQn_IRQHandler, EXTI0_IRQn);
 
 void EXTI1_IRQn_IRQHandler(void)
 {
-    CHECK_IRQ(EXTI1_IRQn, 1);
+    irq_disable();
+    CHECK_IRQ(1);
+    irq_enable();
 }
 DECL_ARMCM_IRQ(EXTI1_IRQn_IRQHandler, EXTI1_IRQn);
 
 void EXTI2_IRQn_IRQHandler(void)
 {
-    CHECK_IRQ(EXTI2_IRQn, 2);
+    irq_disable();
+    CHECK_IRQ(2);
+    irq_enable();
 }
 DECL_ARMCM_IRQ(EXTI2_IRQn_IRQHandler, EXTI2_IRQn);
 
 void EXTI3_IRQn_IRQHandler(void)
 {
-    CHECK_IRQ(EXTI3_IRQn, 3);
+    irq_disable();
+    CHECK_IRQ(3);
+    irq_enable();
 }
 DECL_ARMCM_IRQ(EXTI3_IRQn_IRQHandler, EXTI3_IRQn);
 
 void EXTI4_IRQn_IRQHandler(void)
 {
-    CHECK_IRQ(EXTI4_IRQn, 4);
+    irq_disable();
+    CHECK_IRQ(4);
+    irq_enable();
 }
 DECL_ARMCM_IRQ(EXTI4_IRQn_IRQHandler, EXTI4_IRQn);
 
 void EXTI9_5_IRQn_IRQHandler(void)
 {
     irq_disable();
-    if ((EXTI->PR & LINE(5)) != RESET && irq_callbacks[5] != 0) {
-        irq_callbacks[5](irq_data[5]);
-    }
-    if ((EXTI->PR & LINE(6)) != RESET && irq_callbacks[6] != 0) {
-        irq_callbacks[6](irq_data[6]);
-    }
-    if ((EXTI->PR & LINE(7)) != RESET && irq_callbacks[7] != 0) {
-        irq_callbacks[7](irq_data[7]);
-    }
-    if ((EXTI->PR & LINE(8)) != RESET && irq_callbacks[8] != 0) {
-        irq_callbacks[8](irq_data[8]);
-    }
-    if ((EXTI->PR & LINE(9)) != RESET && irq_callbacks[9] != 0) {
-        irq_callbacks[9](irq_data[9]);
-    }
-    NVIC_ClearPendingIRQ(EXTI15_10_IRQn);
+    CHECK_IRQ(5);
+    CHECK_IRQ(6);
+    CHECK_IRQ(7);
+    CHECK_IRQ(8);
+    CHECK_IRQ(9);
     irq_enable();
 }
 DECL_ARMCM_IRQ(EXTI9_5_IRQn_IRQHandler, EXTI9_5_IRQn);
@@ -78,30 +78,17 @@ DECL_ARMCM_IRQ(EXTI9_5_IRQn_IRQHandler, EXTI9_5_IRQn);
 void EXTI15_10_IRQn_IRQHandler(void)
 {
     irq_disable();
-    if ((EXTI->PR & LINE(10)) != RESET && irq_callbacks[10] != 0) {
-        irq_callbacks[10](irq_data[10]);
-    }
-    if ((EXTI->PR & LINE(11)) != RESET && irq_callbacks[11] != 0) {
-        irq_callbacks[11](irq_data[11]);
-    }
-    if ((EXTI->PR & LINE(12)) != RESET && irq_callbacks[12] != 0) {
-        irq_callbacks[12](irq_data[12]);
-    }
-    if ((EXTI->PR & LINE(13)) != RESET && irq_callbacks[13] != 0) {
-        irq_callbacks[13](irq_data[13]);
-    }
-    if ((EXTI->PR & LINE(14)) != RESET && irq_callbacks[14] != 0) {
-        irq_callbacks[14](irq_data[14]);
-    }
-    if ((EXTI->PR & LINE(15)) != RESET && irq_callbacks[15] != 0) {
-        irq_callbacks[15](irq_data[15]);
-    }
-    NVIC_ClearPendingIRQ(EXTI15_10_IRQn);
+    CHECK_IRQ(10);
+    CHECK_IRQ(11);
+    CHECK_IRQ(12);
+    CHECK_IRQ(13);
+    CHECK_IRQ(14);
+    CHECK_IRQ(15);
     irq_enable();
 }
 DECL_ARMCM_IRQ(EXTI15_10_IRQn_IRQHandler, EXTI15_10_IRQn);
 
-static IRQn_Type get_pin_line(uint32_t pin) {
+static IRQn_Type get_pin_irq(uint32_t pin) {
     IRQn_Type line;
     switch(pin % 16) {
         case 0: line = EXTI0_IRQn; break;
@@ -124,53 +111,90 @@ static IRQn_Type get_pin_line(uint32_t pin) {
     return line;
 }
 
+static uint32_t get_pin_afio_line(uint32_t pin)
+{
+    switch(pin % 16) {
+        case 0 : return (0x000FU << 16U | 0U);
+        case 1 : return (0x00F0U << 16U | 0U);
+        case 2 : return (0x0F00U << 16U | 0U);
+        case 3 : return (0xF000U << 16U | 0U);
+        case 4 : return (0x000FU << 16U | 1U);
+        case 5 : return (0x00F0U << 16U | 1U);
+        case 6 : return (0x0F00U << 16U | 1U);
+        case 7 : return (0xF000U << 16U | 1U);
+        case 8 : return (0x000FU << 16U | 2U);
+        case 9 : return (0x00F0U << 16U | 2U);
+        case 10: return (0x0F00U << 16U | 2U);
+        case 11: return (0xF000U << 16U | 2U);
+        case 12: return (0x000FU << 16U | 3U);
+        case 13: return (0x00F0U << 16U | 3U);
+        case 14: return (0x0F00U << 16U | 3U);
+        case 15: return (0xF000U << 16U | 3U);
+    }
+    return 0;
+}
+
 void config_external_interrupt(uint32_t pin, ExternalInterruptTriggerMode mode, ExternalInterruptCallback callback, void* data)
 {
-    IRQn_Type line =  get_pin_line(pin);
+    uint32_t pin_num = pin % 16;
+    uint32_t pin_port = pin / 16;
+    uint32_t pin_bit = GPIO2BIT(pin);
+    IRQn_Type pin_irq =  get_pin_irq(pin);
 
     if (mode == ExternalInterruptTriggerModeDisabled)
     {
-        NVIC_DisableIRQ(line);
-
-        CLEAR_BIT(EXTI->IMR, line);
-
         irq_disable();
-        irq_callbacks[pin % 16] = 0;
-        irq_data[pin % 16] = 0;
-        irq_enable();
 
+        NVIC_DisableIRQ(pin_irq);
+
+        // disable IT
+        CLEAR_BIT(EXTI->IMR, pin_bit);
+
+        irq_callbacks[pin_num] = 0;
+        irq_data[pin_num] = 0;
+
+        irq_enable();
         return;
     }
 
     irq_disable();
 
-    if (irq_callbacks[pin % 16] != 0) {
+    if (irq_callbacks[pin_num] != 0 && irq_callbacks[pin_num] != callback) {
         try_shutdown("External interrupt conflict");
+        irq_enable();
         return;
     }
 
-    irq_callbacks[pin % 16] = callback;
-    irq_data[pin % 16] = data;
+    irq_callbacks[pin_num] = callback;
+    irq_data[pin_num] = data;
+
+    // enable AFIO clock
+    RCC->APB2ENR |= 1;
+    (void)RCC->APB2ENR;
+
+    // link port
+    uint32_t afio_line = get_pin_afio_line(pin);
+    MODIFY_REG(AFIO->EXTICR[afio_line & 0xFF], (afio_line >> 16), pin_port << POSITION_VAL((afio_line >> 16)));
+
+    // enable IT
+    SET_BIT(EXTI->IMR, pin_bit);
 
     switch(mode) {
         case ExternalInterruptTriggerModeDisabled: break;
         case ExternalInterruptTriggerModeRising:
-            SET_BIT(EXTI->RTSR, line);
+            SET_BIT(EXTI->RTSR, pin_bit);
             break;
         case ExternalInterruptTriggerModeFalling:
-            SET_BIT(EXTI->FTSR, line);
+            SET_BIT(EXTI->FTSR, pin_bit);
             break;
         case ExternalInterruptTriggerModeRisingFalling:
-            SET_BIT(EXTI->RTSR, line);
-            SET_BIT(EXTI->FTSR, line);
+            SET_BIT(EXTI->RTSR, pin_bit);
+            SET_BIT(EXTI->FTSR, pin_bit);
             break;
     }
 
-    // enable interrupt
-    SET_BIT(EXTI->IMR, line);
-
-    NVIC_SetPriority(line, 0);
-    NVIC_EnableIRQ(line);
+    NVIC_EnableIRQ(pin_irq);
+    NVIC_SetPriority(pin_irq, 0);
 
     irq_enable();
     return;

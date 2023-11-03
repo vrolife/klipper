@@ -21,6 +21,7 @@ struct endstop {
     uint32_t rest_time, sample_time, nextwake;
     struct trsync *ts;
     uint8_t flags, sample_count, trigger_count, trigger_reason;
+    uint8_t irq_triggered;
     uint32_t irq_pin;
     uint32_t irq_mode;
 };
@@ -44,6 +45,21 @@ endstop_event(struct timer *t)
     e->nextwake = nextwake;
     e->time.func = endstop_oversample_event;
     return endstop_oversample_event(t);
+}
+
+static uint_fast8_t
+endstop_event_for_external_interrypt(struct timer *t)
+{
+    struct endstop *e = container_of(t, struct endstop, time);
+    uint32_t nextwake = e->time.waketime + e->rest_time;
+    if (!e->irq_triggered) {
+        // No match - reschedule for the next attempt
+        e->time.waketime = nextwake;
+        return SF_RESCHEDULE;
+    }
+    e->nextwake = nextwake;
+    trsync_do_trigger(e->ts, e->trigger_reason);
+    return SF_DONE;
 }
 
 // Timer callback for an end stop that is sampling extra times
@@ -74,7 +90,7 @@ static void endstop_interrupt_callabck(void* data)
 {
     struct endstop *e = (struct endstop *)data;
     config_external_interrupt(e->irq_pin, ExternalInterruptTriggerModeDisabled, 0, 0);
-    trsync_do_trigger(e->ts, e->trigger_reason);
+    e->irq_triggered = 1;
 }
 #endif
 
@@ -85,6 +101,7 @@ command_config_endstop(uint32_t *args)
     e->pin = gpio_in_setup(args[1], args[2]);
     e->irq_pin = args[1];
     e->irq_mode = args[3];
+    e->irq_triggered = 0;
 }
 DECL_COMMAND(command_config_endstop, "config_endstop oid=%c pin=%c pull_up=%c irq_mode=%u");
 
@@ -119,17 +136,17 @@ command_endstop_home(uint32_t *args)
 
 #if CONFIG_STM32_EXTERNAL_INTERRUPT
     if (e->irq_mode != ExternalInterruptTriggerModeDisabled) {
-        config_external_interrupt(e->irq_pin, e->irq_mode, endstop_interrupt_callabck, e);
-    } else
+        e->irq_triggered = 0;
+        e->time.func = endstop_event_for_external_interrypt;
+        config_external_interrupt(e->irq_pin, (ExternalInterruptTriggerMode)e->irq_mode, endstop_interrupt_callabck, e);
+    }
 #else
     if (e->irq_mode != 0) {
         try_shutdown("External interrupt disabled");
         return;
     }
 #endif
-    {
-        sched_add_timer(&e->time);
-    }
+    sched_add_timer(&e->time);
 }
 DECL_COMMAND(command_endstop_home,
              "endstop_home oid=%c clock=%u sample_ticks=%u sample_count=%c"
